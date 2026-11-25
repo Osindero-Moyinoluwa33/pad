@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="oled_black">#000000</color>
+    <color name="surface_card">#0B0B10</color>
+    <color name="surface_border">#1E1E2B</color>
+    <color name="indigo_primary">#4F46E5</color>
+    <color name="indigo_pressed">#4338CA</color>
+    <color name="text_primary">#F4F4F5</color>
+    <color name="text_secondary">#A1A1AA</color>
+    <color name="status_connected">#22C55E</color>
+    <color name="status_waiting">#F59E0B</color>
+    <color name="status_inactive">#71717A</color>
+</resources>

@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PS WebPad" />
+  <link rel="manifest" href="/pad-manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>PS WebPad vPad</title>
+  <script src="/vendor/dexie.min.js" defer></script>
+  <style>
+    :root {
+      --bg: #000000;
+      --surface: #0b0b12;
+      --surface-active: #4f46e5;
+      --border: #202030;
+      --text: #f4f4f5;
+      --muted: #8b8ba3;
+      --indigo: #4f46e5;
+      --green: #22c55e;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --pink: #ec4899;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      touch-action: none;
+    }
+
+    .pad-shell {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 100vw;
+      height: 100dvh;
+      padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      background: radial-gradient(circle at 50% 0%, rgba(79, 70, 229, 0.08), transparent 55%), #000000;
+    }
+
+    /* Top Shoulder Bar */
+    .top-bar {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 12px;
+      height: 54px;
+      flex-shrink: 0;
+    }
+
+    .shoulder-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .shoulder-group.right {
+      justify-content: flex-end;
+    }
+
+    .shoulder-btn {
+      min-width: 78px;
+      height: 46px;
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 60ms ease, background-color 60ms ease, border-color 60ms ease;
+    }
+
+    .shoulder-btn.wide {
+      min-width: 106px;
+    }
+
+    .shoulder-btn.active {
+      background: var(--indigo);
+      border-color: #818cf8;
+      color: #ffffff;
+      transform: scale(0.96);
+      box-shadow: 0 0 18px rgba(79, 70, 229, 0.45);
+    }
+
+    .status-badge {
+      padding: 8px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #07070c;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .status-badge.connected {
+      border-color: rgba(79, 70, 229, 0.6);
+      color: #e0e7ff;
+      background: rgba(79, 70, 229, 0.16);
+    }
+
+    .status-badge.offline {
+      border-color: rgba(245, 158, 11, 0.6);
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.14);
+    }
+
+    .status-badge.full {
+      border-color: rgba(239, 68, 68, 0.6);
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.15);
+    }
+
+    /* Main Analog + Face Button Deck */
+    .main-deck {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 0;
+      padding: 4px 10px;
+    }
+
+    .stick-zone {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      height: 100%;
+    }
+
+    #stickBase {
+      position: relative;
+      width: min(44vh, 200px);
+      height: min(44vh, 200px);
+      border-radius: 50%;
+      background: radial-gradient(circle, #10101a 0%, #07070c 72%);
+      border: 2px solid #262638;
+      box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 80ms ease, box-shadow 80ms ease;
+    }
+
+    #stickBase::after {
+      content: "";
+      position: absolute;
+      width: 44%;
+      height: 44%;
+      border-radius: 50%;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      pointer-events: none;
+    }
+
+    #stickBase.active {
+      border-color: var(--indigo);
+      box-shadow: inset 0 0 24px rgba(79, 70, 229, 0.22), 0 0 22px rgba(79, 70, 229, 0.25);
+    }
+
+    #stickKnob {
+      width: 42%;
+      height: 42%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #2a2a3d, #13131d 70%);
+      border: 2px solid #3f3f58;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.85);
+      transform: translate3d(0px, 0px, 0px);
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    #stickBase.active #stickKnob {
+      background: radial-gradient(circle at 35% 30%, #6366f1, #4338ca 75%);
+      border-color: #a5b4fc;
+    }
+
+    /* Center Menu Controls */
+    .center-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      height: 100%;
+      padding-bottom: 6px;
+      gap: 10px;
+    }
+
+    .system-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .sys-btn {
+      min-width: 82px;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 60ms ease, background-color 60ms ease, color 60ms ease;
+    }
+
+    .sys-btn.active {
+      background: var(--indigo);
+      border-color: #818cf8;
+      color: #ffffff;
+      transform: scale(0.95);
+    }
+
+    /* Right PlayStation Diamond Cluster */
+    .face-zone {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      height: 100%;
+    }
+
+    .diamond {
+      position: relative;
+      width: min(46vh, 212px);
+      height: min(46vh, 212px);
+    }
+
+    .face-btn {
+      position: absolute;
+      width: 34%;
+      height: 34%;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      background: #0c0c14;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 60ms ease, background-color 60ms ease, border-color 60ms ease, box-shadow 60ms ease;
+    }
+
+    .face-btn svg {
+      width: 46%;
+      height: 46%;
+      pointer-events: none;
+    }
+
+    .face-btn[data-btn="TRIANGLE"] {
+      top: 0;
+      left: 33%;
+      color: var(--green);
+    }
+
+    .face-btn[data-btn="CIRCLE"] {
+      top: 33%;
+      right: 0;
+      color: var(--red);
+    }
+
+    .face-btn[data-btn="CROSS"] {
+      bottom: 0;
+      left: 33%;
+      color: var(--blue);
+    }
+
+    .face-btn[data-btn="SQUARE"] {
+      top: 33%;
+      left: 0;
+      color: var(--pink);
+    }
+
+    .face-btn.active {
+      background: var(--indigo);
+      border-color: #818cf8;
+      color: #ffffff;
+      transform: scale(0.92);
+      box-shadow: 0 0 22px rgba(79, 70, 229, 0.55);
+    }
+  </style>
+</head>
+<body>
+  <div class="pad-shell">
+    <header class="top-bar">
+      <div class="shoulder-group left">
+        <button type="button" class="shoulder-btn" data-btn="L2">L2</button>
+        <button type="button" class="shoulder-btn" data-btn="L1">L1</button>
+      </div>
+
+      <div id="statusBadge" class="status-badge">CONNECTING...</div>
+
+      <div class="shoulder-group right">
+        <button type="button" class="shoulder-btn wide" data-btn="R1">R1 (Sprint)</button>
+        <button type="button" class="shoulder-btn" data-btn="R2">R2</button>
+      </div>
+    </header>
+
+    <main class="main-deck">
+      <section class="stick-zone" aria-label="Left Analog Stick">
+        <div id="stickBase">
+          <div id="stickKnob"></div>
+        </div>
+      </section>
+
+      <section class="center-controls" aria-label="System Buttons">
+        <div class="system-row">
+          <button type="button" class="sys-btn" data-btn="SELECT">SELECT</button>
+          <button type="button" class="sys-btn" data-btn="START">START</button>
+        </div>
+      </section>
+
+      <section class="face-zone" aria-label="PlayStation Face Buttons">
+        <div class="diamond">
+          <button type="button" class="face-btn" data-btn="TRIANGLE" aria-label="Triangle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round">
+              <polygon points="12 4 21 19 3 19" />
+            </svg>
+          </button>
+          <button type="button" class="face-btn" data-btn="CIRCLE" aria-label="Circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+              <circle cx="12" cy="12" r="8" />
+            </svg>
+          </button>
+          <button type="button" class="face-btn" data-btn="CROSS" aria-label="Cross">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          </button>
+          <button type="button" class="face-btn" data-btn="SQUARE" aria-label="Square">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round">
+              <rect x="5" y="5" width="14" height="14" rx="1.5" />
+            </svg>
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    window.addEventListener("DOMContentLoaded", function () {
+      const statusBadge = document.getElementById("statusBadge");
+      const stickBase = document.getElementById("stickBase");
+      const stickKnob = document.getElementById("stickKnob");
+      const buttons = Array.from(document.querySelectorAll("[data-btn]"));
+
+      let ws = null;
+      let reconnectTimer = null;
+      let isFull = false;
+      let assignedPlayer = null;
+      let queuedCount = 0;
+
+      // Register dedicated Service Worker for offline /pad asset caching
+      if ("serviceWorker" in navigator && window.location.pathname === "/pad") {
+        navigator.serviceWorker.register("/pad-sw.js", { scope: "/pad" }).catch(function () {});
+      }
+
+      // Dexie IndexedDB offline persistence + queue (with native IndexedDB fallback if standalone)
+      let dexieDb = null;
+      function getDexieDb() {
+        if (dexieDb) return dexieDb;
+        if (typeof window.Dexie !== "undefined") {
+          const db = new window.Dexie("PSWebPadClientDB");
+          db.version(1).stores({
+            padConfig: "id, lastPlayer, updatedAt",
+            offlineQueue: "++id, type, createdAt",
+          });
+          dexieDb = db;
+          return dexieDb;
+        }
+        return null;
+      }
+
+      async function savePadConfig(playerNum) {
+        const db = getDexieDb();
+        if (!db) return;
+        try {
+          await db.padConfig.put({
+            id: "local",
+            lastPlayer: playerNum,
+            deadzone: 0.22,
+            updatedAt: Date.now(),
+          });
+        } catch (_) {}
+      }
+
+      async function loadPadConfig() {
+        const db = getDexieDb();
+        if (!db) return null;
+        try {
+          return await db.padConfig.get("local");
+        } catch (_) {
+          return null;
+        }
+      }
+
+      async function enqueueOfflinePacket(payload) {
+        const db = getDexieDb();
+        if (!db) return;
+        try {
+          await db.offlineQueue.add({
+            type: payload.type,
+            payload: payload,
+            createdAt: Date.now(),
+          });
+          const count = await db.offlineQueue.count();
+          if (count > 60) {
+            const oldestKeys = await db.offlineQueue.orderBy("id").limit(count - 60).primaryKeys();
+            await db.offlineQueue.bulkDelete(oldestKeys);
+          }
+          queuedCount = Math.min(count, 60);
+          renderOfflineBadge();
+        } catch (_) {}
+      }
+
+      async function flushOfflineQueue() {
+        const db = getDexieDb();
+        if (!db || !ws || ws.readyState !== WebSocket.OPEN) return;
+        try {
+          const items = await db.offlineQueue.orderBy("id").toArray();
+          if (!items.length) {
+            queuedCount = 0;
+            return;
+          }
+          for (let i = 0; i < items.length; i++) {
+            if (ws.readyState !== WebSocket.OPEN) break;
+            ws.send(JSON.stringify(items[i].payload));
+          }
+          await db.offlineQueue.clear();
+          queuedCount = 0;
+        } catch (_) {}
+      }
+
+      function vibrateTick() {
+        if (navigator.vibrate) {
+          try {
+            navigator.vibrate(12);
+          } catch (_) {}
+        }
+      }
+
+      function setBadge(text, stateClass) {
+        statusBadge.textContent = text;
+        statusBadge.className = "status-badge" + (stateClass ? " " + stateClass : "");
+      }
+
+      function renderOfflineBadge() {
+        const prefix = assignedPlayer ? "PLAYER " + assignedPlayer : "OFFLINE CACHE";
+        const suffix = queuedCount > 0 ? " • " + queuedCount + " QUEUED" : " • OFFLINE";
+        setBadge(prefix + suffix, "offline");
+      }
+
+      function sendPacket(payload) {
+        if (ws && ws.readyState === WebSocket.OPEN && navigator.onLine !== false) {
+          ws.send(JSON.stringify(payload));
+        } else if (payload.type === "btn" || payload.type === "stick") {
+          enqueueOfflinePacket(payload);
+        }
+      }
+
+      function handleServerMessage(data) {
+        if (!data || !data.type) return;
+        if (data.type === "ping") {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "pong", ts: data.ts }));
+          }
+          return;
+        }
+        if (data.type === "assigned") {
+          isFull = false;
+          assignedPlayer = data.player;
+          savePadConfig(data.player);
+          setBadge("PLAYER " + data.player + " • PS VPAD", "connected");
+          flushOfflineQueue();
+        } else if (data.type === "full") {
+          isFull = true;
+          setBadge("SLOTS FULL (MAX 2)", "full");
+        }
+      }
+
+      function connectWebSocket() {
+        if (isFull) return;
+        if (navigator.onLine === false) {
+          renderOfflineBadge();
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connectWebSocket, 1500);
+          return;
+        }
+
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl =
+          window.location.pathname === "/pad"
+            ? protocol + "//" + window.location.host + "/ws-pad"
+            : protocol + "//" + (window.location.hostname || "127.0.0.1") + ":8081";
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = function () {
+          setBadge("AUTHENTICATING...", "");
+        };
+
+        ws.onmessage = function (event) {
+          try {
+            handleServerMessage(JSON.parse(event.data));
+          } catch (_) {}
+        };
+
+        ws.onclose = function () {
+          if (!isFull) {
+            if (navigator.onLine === false || queuedCount > 0) {
+              renderOfflineBadge();
+            } else {
+              setBadge("RECONNECTING...", "offline");
+            }
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connectWebSocket, 1200);
+          }
+        };
+
+        ws.onerror = function () {
+          try { ws.close(); } catch (_) {}
+        };
+      }
+
+      window.addEventListener("offline", function () {
+        renderOfflineBadge();
+      });
+
+      window.addEventListener("online", function () {
+        clearTimeout(reconnectTimer);
+        connectWebSocket();
+      });
+
+      // Multi-touch button tracking (touch.identifier set per button)
+      const buttonTouchMap = new Map();
+      const touchToButton = new Map();
+
+      function updateButtonState(btnEl, pressed) {
+        const name = btnEl.getAttribute("data-btn");
+        const wasPressed = btnEl.classList.contains("active");
+        if (pressed === wasPressed) return;
+        if (pressed) {
+          btnEl.classList.add("active");
+          vibrateTick();
+        } else {
+          btnEl.classList.remove("active");
+        }
+        sendPacket({ type: "btn", button: name, pressed: pressed });
+      }
+
+      buttons.forEach(function (btnEl) {
+        buttonTouchMap.set(btnEl, new Set());
+
+        btnEl.addEventListener("touchstart", function (e) {
+          e.preventDefault();
+          const set = buttonTouchMap.get(btnEl);
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            set.add(t.identifier);
+            touchToButton.set(t.identifier, btnEl);
+          }
+          updateButtonState(btnEl, set.size > 0);
+        }, { passive: false });
+
+        function handleButtonTouchEnd(e) {
+          e.preventDefault();
+          const set = buttonTouchMap.get(btnEl);
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            set.delete(t.identifier);
+            touchToButton.delete(t.identifier);
+          }
+          updateButtonState(btnEl, set.size > 0);
+        }
+
+        btnEl.addEventListener("touchend", handleButtonTouchEnd, { passive: false });
+        btnEl.addEventListener("touchcancel", handleButtonTouchEnd, { passive: false });
+
+        btnEl.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          updateButtonState(btnEl, true);
+        });
+        btnEl.addEventListener("mouseup", function () {
+          updateButtonState(btnEl, false);
+        });
+        btnEl.addEventListener("mouseleave", function () {
+          if (btnEl.classList.contains("active") && buttonTouchMap.get(btnEl).size === 0) {
+            updateButtonState(btnEl, false);
+          }
+        });
+      });
+
+      // Multi-touch 360-degree analog stick tracking dedicated touch.identifier
+      let stickTouchId = null;
+      let stickMouseDown = false;
+      let lastStickX = 0;
+      let lastStickY = 0;
+
+      function updateStickFromPoint(clientX, clientY) {
+        const rect = stickBase.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const maxRadius = rect.width * 0.34;
+
+        let dx = clientX - cx;
+        let dy = clientY - cy;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > maxRadius && dist > 0) {
+          dx = (dx / dist) * maxRadius;
+          dy = (dy / dist) * maxRadius;
+        }
+
+        stickKnob.style.transform = "translate3d(" + dx.toFixed(1) + "px, " + dy.toFixed(1) + "px, 0px)";
+
+        const nx = Number((dx / maxRadius).toFixed(3));
+        const ny = Number((dy / maxRadius).toFixed(3));
+
+        if (nx !== lastStickX || ny !== lastStickY) {
+          lastStickX = nx;
+          lastStickY = ny;
+          sendPacket({ type: "stick", x: nx, y: ny });
+        }
+      }
+
+      function resetStick() {
+        stickTouchId = null;
+        stickMouseDown = false;
+        stickBase.classList.remove("active");
+        stickKnob.style.transform = "translate3d(0px, 0px, 0px)";
+        if (lastStickX !== 0 || lastStickY !== 0) {
+          lastStickX = 0;
+          lastStickY = 0;
+          sendPacket({ type: "stick", x: 0, y: 0 });
+        }
+      }
+
+      stickBase.addEventListener("touchstart", function (e) {
+        e.preventDefault();
+        if (stickTouchId !== null) return;
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        stickTouchId = touch.identifier;
+        stickBase.classList.add("active");
+        vibrateTick();
+        updateStickFromPoint(touch.clientX, touch.clientY);
+      }, { passive: false });
+
+      window.addEventListener("touchmove", function (e) {
+        if (stickTouchId === null) return;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          if (t.identifier === stickTouchId) {
+            e.preventDefault();
+            updateStickFromPoint(t.clientX, t.clientY);
+            break;
+          }
+        }
+      }, { passive: false });
+
+      function handleStickTouchEnd(e) {
+        if (stickTouchId === null) return;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          if (e.changedTouches[i].identifier === stickTouchId) {
+            resetStick();
+            break;
+          }
+        }
+      }
+
+      window.addEventListener("touchend", handleStickTouchEnd, { passive: false });
+      window.addEventListener("touchcancel", handleStickTouchEnd, { passive: false });
+
+      stickBase.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        stickMouseDown = true;
+        stickBase.classList.add("active");
+        updateStickFromPoint(e.clientX, e.clientY);
+      });
+
+      window.addEventListener("mousemove", function (e) {
+        if (!stickMouseDown) return;
+        updateStickFromPoint(e.clientX, e.clientY);
+      });
+
+      window.addEventListener("mouseup", function () {
+        if (stickMouseDown) resetStick();
+      });
+
+      loadPadConfig().then(function (cfg) {
+        if (cfg && cfg.lastPlayer) {
+          assignedPlayer = cfg.lastPlayer;
+        }
+        const db = getDexieDb();
+        if (db) {
+          db.offlineQueue.count().then(function (c) {
+            queuedCount = c;
+            if (navigator.onLine === false) renderOfflineBadge();
+          }).catch(function () {});
+        }
+        connectWebSocket();
+      });
+    });
+  </script>
+</body>
+</html>
