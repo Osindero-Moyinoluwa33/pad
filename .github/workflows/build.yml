@@ -9,34 +9,53 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
       - name: Arrange Android Project Structure & Build
         run: |
-          mkdir -p app/src/main/java/com/vendapos/pswebpad
-          mkdir -p app/src/main/res/layout app/src/main/res/drawable app/src/main/res/xml app/src/main/assets
-          cp *.kt app/src/main/java/com/vendapos/pswebpad/ 2>/dev/null || true
+          PKG=$(grep -oP 'package="\K[^"]+' AndroidManifest.xml 2>/dev/null || echo "com.vendapos.pswebpad")
+          PKG_PATH="app/src/main/java/${PKG//.//}"
+          mkdir -p "$PKG_PATH" app/src/main/res/layout app/src/main/res/drawable app/src/main/res/values app/src/main/res/xml app/src/main/assets
+
+          cp *.kt "$PKG_PATH/" 2>/dev/null || true
           cp AndroidManifest.xml app/src/main/ 2>/dev/null || true
           cp activity_*.xml app/src/main/res/layout/ 2>/dev/null || true
           cp bg_*.xml ic_*.xml app/src/main/res/drawable/ 2>/dev/null || true
           cp method.xml app/src/main/res/xml/ 2>/dev/null || true
           cp *.html app/src/main/assets/ 2>/dev/null || true
+
+          # Remove package attribute from Manifest if AGP 8+ namespace is used
+          sed -i 's/package="[^"]*"//g' app/src/main/AndroidManifest.xml
+
+          # Fallback strings & theme so resource linking never fails
+          cat << 'EOF' > app/src/main/res/values/strings.xml
+          <resources>
+              <string name="app_name">PS WebPad Host</string>
+          </resources>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/values/themes.xml
+          <resources>
+              <style name="Theme.PSWebPadHost" parent="Theme.Material3.Dark.NoActionBar" />
+          </resources>
+          EOF
+
           cat << 'EOF' > settings.gradle.kts
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement { repositories { google(); mavenCentral() } }
           rootProject.name = "PSWebPadHost"
           include(":app")
           EOF
+
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.5.0" apply false
               id("org.jetbrains.kotlin.android") version "1.9.24" apply false
           }
           EOF
-          PKG=$(grep -oP 'package="\K[^"]+' app/src/main/AndroidManifest.xml || echo "com.vendapos.pswebpad")
-          mkdir -p "app/src/main/java/${PKG//.//}"
-          cp *.kt "app/src/main/java/${PKG//.//}/" 2>/dev/null || true
+
           cat << EOF > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -65,7 +84,8 @@ jobs:
               implementation("org.java-websocket:Java-WebSocket:1.5.6")
           }
           EOF
-          gradle assembleDebug
+
+          gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: ps-webpad-host-apk
